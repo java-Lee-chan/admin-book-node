@@ -2,6 +2,10 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { PRIVATE_KEY } = require('./constant');
 
+function isObject(o) {
+  return Object.prototype.toString.call(o) === '[object Object]';
+}
+
 function md5(s) {
   // 注意参数需要 String 类型，否则会报错
   return crypto.createHash('md5')
@@ -18,5 +22,6 @@ function decode(req) {
 
 module.exports = {
   md5,
-  decode
+  decode,
+  isObject
 }

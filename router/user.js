@@ -49,7 +49,6 @@ router.get('/info', function(req, res){
   const decoded = decode(req);
   if (decoded && decoded.username) {
     findUser(decoded.username).then(user => {
-      console.log(user);
       if (user) {
         user.roles = [user.role];
         new Result(user, '用户信息查询成功').success(res);

@@ -1,5 +1,6 @@
-const { MIME_TYPE_EPUB, UPLOAD_URL, UPLOAD_PATH } = require('../utils/constant');
+const { MIME_TYPE_EPUB, UPLOAD_URL, UPLOAD_PATH, OLD_UPLOAD_URL } = require('../utils/constant');
 const fs = require('fs');
+const path = require('path');
 const xml2js = require('xml2js').parseString;
 const Epub = require('../utils/epub');
 
@@ -38,7 +39,7 @@ class Book {
     if (fs.existsSync(oldBookPath) && !fs.existsSync(bookPath)) {
       fs.renameSync(oldBookPath, bookPath);
     }
-    this.filename = filename; // 文件名
+    this.fileName = filename; // 文件名
     this.path = `/book/${filename}${suffix}`; // epub文件相对路径
     this.filePath = this.path;
     this.unzipPath = `/unzip/${filename}`;  // epub解压后相对路径
@@ -53,11 +54,30 @@ class Book {
     this.categoryText = '';   // 分类名称
     this.language = '';   // 语种
     this.unzipUrl = unzipUrl; // 解压后文件夹的链接
-    this.originalname = originalname; // 电子书文件的原名
+    this.originalName = originalname; // 电子书文件的原名
   }
 
   createBookFromData(data) {
-
+    this.fileName = data.fileName;
+    this.cover = data.coverPath;
+    this.title = data.title;
+    this.author = data.author;
+    this.publisher = data.publisher;
+    this.bookId = data.fileName;
+    this.language = data.language;
+    this.rootFile = data.rootFile;
+    this.originalName = data.originalName;
+    this.path = data.path || data.filePath;
+    this.filePath = data.path || data.filePath;
+    this.unzipPath = data.unzipPath;
+    this.coverPath = data.coverPath;
+    this.createUser = data.username;
+    this.createDt = new Date().getTime();
+    this.updateDt = new Date().getTime();
+    this.updateType = data.updateType === 0 ? data.updateType : 1;
+    this.category = data.category || 99;
+    this.categoryText= data.categoryText || '自定义';
+    this.contents = data.contents || [];
   }
 
   parse() {
@@ -95,18 +115,19 @@ class Book {
                 reject(err);
               } else {
                 const suffix = mimetype.split('/')[1];
-                const coverPath = `${UPLOAD_PATH}/img/${this.filename}.${suffix}`;
-                const coverUrl = `${UPLOAD_URL}/img/${this.filename}.${suffix}`;
+                const coverPath = `${UPLOAD_PATH}/img/${this.fileName}.${suffix}`;
+                const coverUrl = `${UPLOAD_URL}/img/${this.fileName}.${suffix}`;
                 fs.writeFileSync(coverPath, file, 'binary');
-                this.coverPath = `/img/${this.filename}.${suffix}`;
+                this.coverPath = `/img/${this.fileName}.${suffix}`;
                 this.cover = coverUrl;
                 resolve(this);
               }
             }
             try {
               this.unzip();
-              this.parseContents(epub).then(({ chapters }) => {
+              this.parseContents(epub).then(({ chapters, chapterTree }) => {
                 this.contents = chapters;
+                this.contentsTree = chapterTree;
                 epub.getImage(cover, handleGetImage);
               })
             } catch (e) {
@@ -168,7 +189,9 @@ class Book {
     if (fs.existsSync(ncxFilePath)) {
       return new Promise((resolve, reject) => {
         const xml = fs.readFileSync(ncxFilePath, 'utf-8');
-        const filename = this.filename;
+        const dir = path.dirname(ncxFilePath).replace(UPLOAD_PATH, '');
+        const fileName = this.fileName;
+        const unzipPath = this.unzipPath;
         xml2js(xml, {
           explicitArray: false,
           ignoreAttrs: false
@@ -181,26 +204,19 @@ class Book {
               navMap.navPoint = findParent(navMap.navPoint);
               const newNavMap = flatten(navMap.navPoint);
               const chapters = [];
-              epub.flow.forEach((chapter, index) => {
-                if (index + 1 > newNavMap.length) {
-                  return;
-                }
-                const nav = newNavMap[index];
-                chapter.text = `${UPLOAD_URL}/unzip/${filename}/${chapter.href}`;
-                
-                if (nav && nav.navLabel) {
-                  chapter.label = nav.navLabel.text || '';
-                } else {
-                  chapter.label = '';
-                }
-                chapter.level = nav.level;
-                chapter.pid = nav.pid;
-                chapter.navId = nav['$'].id;
-                chapter.filename = filename;
+              newNavMap.forEach((chapter, index) => {
+                const src = chapter.content['$'].src;
+                chapter.id = `${src}`;
+                chapter.href = `${dir}/${src}`.replace(unzipPath, '');
+                chapter.text = `${UPLOAD_URL}${dir}/${src}`;
+                chapter.label = chapter.navLabel.text || '';
+                chapter.navId = chapter['$'].id;
+                chapter.fileName = fileName;
                 chapter.order = index + 1;
                 chapters.push(chapter);
               });
-              resolve({ chapters });
+              const chapterTree = Book.genContentsTree(chapters);
+              resolve({ chapters, chapterTree });
             } else {
               reject(new Error('目录解析失败，目录数为0'));
             }
@@ -212,11 +228,100 @@ class Book {
     }
   }
 
+  toDb() {
+    return {
+      fileName: this.fileName,
+      cover: this.cover,
+      title: this.title,
+      author: this.author,
+      publisher: this.publisher,
+      bookId: this.fileName,
+      language: this.language,
+      rootFile: this.rootFile,
+      originalName: this.originalName,
+      filePath: this.path || this.filePath,
+      unzipPath: this.unzipPath,
+      coverPath: this.coverPath,
+      createUser: this.createUser,
+      createDt: this.createDt,
+      updateDt: this.updateDt,
+      updateType: this.updateType,
+      category: this.category,
+      categoryText: this.categoryText
+    }
+  }
+
+  getContents() {
+    return this.contents
+  }
+
+  reset() {
+    if (Book.pathExists(this.filePath)) {
+      fs.unlinkSync(Book.genPath(this.filePath));
+    }
+    if (Book.pathExists(this.coverPath)) {
+      fs.unlinkSync(Book.genPath(this.coverPath));
+    }
+    if (Book.pathExists(this.unzipPath)) {
+      fs.rmdirSync(Book.genPath(this.unzipPath), { recursive: true });
+    }
+  }
+
   static genPath(path) {
     if(!path.startsWith('/')) {
       path = `/${path}`;
     }
     return `${UPLOAD_PATH}${path}`;
+  }
+
+  static pathExists(path) {
+    if (path.startsWith(UPLOAD_PATH)) {
+      return fs.existsSync(path);
+    } else {
+      return fs.existsSync(Book.genPath(path));
+    }
+  }
+
+  static genCoverUrl(book) {
+    if (+book.updateType === 0) {
+      const { cover } = book;
+      if (cover) {
+        if (cover.startsWith('/')) {
+          return `${OLD_UPLOAD_URL}${cover}`
+        } else {
+          return `${OLD_UPLOAD_URL}/${cover}`
+        }
+      } else {
+        return null;
+      }
+    } else {
+      const { cover } = book;
+      if (cover) {
+        if (cover.startsWith('/')) {
+          return `${UPLOAD_URL}${cover}`
+        } else {
+          return `${UPLOAD_URL}/${cover}`
+        }
+      } else {
+        return null;
+      }
+    }
+  }
+
+  static genContentsTree(contents) {
+    if (contents) {
+      const contentsTree = [];
+      contents.forEach(c => {
+        c.children = [];
+        if (c.pid === '') {
+          contentsTree.push(c);
+        } else {
+          const parent = contents.find(_ => _.navId === c.pid);
+          parent.children.push(c);
+        }
+      });
+      return contentsTree;
+    }
   }
 }
 

@@ -1,6 +1,8 @@
 const { env } = require('./env');
 const UPLOAD_PATH = env === 'dev' ? './admin-upload-ebook': '/root/upload/admin-upload/ebook';
 
+const OLD_UPLOAD_URL = env === 'dev' ? 'http://127.0.0.1:3000/book/res/img': 'http://127.0.0.1:3000/book/res/img';
+
 const UPLOAD_URL = env === 'dev' ? 'http://127.0.0.1:3000/admin-upload-ebook': 'http://127.0.0.1:3000/admin-upload-ebook';
 
 module.exports = {
@@ -13,5 +15,6 @@ module.exports = {
   JWT_EXPIRED: 60 * 60,  // token失效时间
   UPLOAD_PATH,
   MIME_TYPE_EPUB: 'application/epub+zip',
-  UPLOAD_URL
+  UPLOAD_URL,
+  OLD_UPLOAD_URL
 }
