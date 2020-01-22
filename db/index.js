@@ -25,10 +25,10 @@ function querySql(sql) {
     try {
       conn.query(sql, (err, results) => {
         if (err) {
-          debug && console.log('查询失败，原因:' + JSON.stringify(err))
+          // debug && console.log('查询失败，原因:' + JSON.stringify(err))
           reject(err);
         } else {
-          debug && console.log('查询成功', JSON.stringify(results))
+          // debug && console.log('查询成功', JSON.stringify(results))
           resolve(results);
         }
       });
@@ -107,7 +107,7 @@ function update(model, tableName, where) {
       if (entry.length > 0) {
         let sql = `UPDATE \`${tableName}\` SET`;
         sql = `${sql} ${entry.join(',')} ${where}`;
-        debug && console.log(sql);
+        // debug && console.log(sql);
         const conn = connect();
         try {
           conn.query(sql, (err, result) => {
@@ -127,9 +127,27 @@ function update(model, tableName, where) {
   })
 }
 
+function and(where, k, v) {
+  if (where === 'where') {
+    return `${where} \`${k}\`='${v}'`
+  } else {
+    return `${where} and \`${k}\`='${v}'`
+  }
+}
+
+function andLike(where, k, v) {
+  if (where === 'where') {
+    return `${where} \`${k}\` like '%${v}%'`
+  } else {
+    return `${where} and \`${k}\` like '%${v}%'`
+  }
+}
+
 module.exports = {
   querySql,
   queryOne,
   insert,
-  update
+  update,
+  and,
+  andLike
 }
